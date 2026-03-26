@@ -1,0 +1,119 @@
+{
+  "name": "invoice_records",
+  "title": "发票识别记录",
+  "schemas": [
+    {
+      "name": "fileName",
+      "title": "文件名",
+      "type": "String"
+    },
+    {
+      "name": "fileSize",
+      "title": "文件大小",
+      "type": "Number"
+    },
+    {
+      "name": "invoiceType",
+      "title": "发票类型",
+      "type": "String"
+    },
+    {
+      "name": "invoiceCode",
+      "title": "发票代码",
+      "type": "String"
+    },
+    {
+      "name": "invoiceNumber",
+      "title": "发票号码",
+      "type": "String"
+    },
+    {
+      "name": "invoiceDate",
+      "title": "开票日期",
+      "type": "Date",
+      "format": "date"
+    },
+    {
+      "name": "amount",
+      "title": "金额",
+      "type": "String"
+    },
+    {
+      "name": "sellerName",
+      "title": "销售方名称",
+      "type": "String"
+    },
+    {
+      "name": "buyerName",
+      "title": "购买方名称",
+      "type": "String"
+    },
+    {
+      "name": "taxAmount",
+      "title": "税额",
+      "type": "String"
+    },
+    {
+      "name": "totalAmount",
+      "title": "总金额",
+      "type": "String"
+    },
+    {
+      "name": "recognitionStatus",
+      "title": "识别状态",
+      "type": "String"
+    },
+    {
+      "name": "isMockData",
+      "title": "是否为模拟数据",
+      "type": "Boolean"
+    },
+    {
+      "name": "recognitionTime",
+      "title": "识别时间",
+      "type": "DateTime",
+      "format": "timestamp-ms"
+    },
+    {
+      "name": "originalImageUrl",
+      "title": "原始图片URL",
+      "type": "Url"
+    },
+    {
+      "name": "apiResponse",
+      "title": "API响应数据",
+      "type": "Object"
+    },
+    {
+      "name": "carPlate",
+      "title": "车牌号",
+      "type": "String"
+    },
+    {
+      "name": "hasSeal1",
+      "title": "印章1",
+      "type": "Boolean"
+    },
+    {
+      "name": "hasSeal2",
+      "title": "印章2",
+      "type": "Boolean"
+    },
+    {
+      "name": "auditStatus",
+      "title": "审核状态",
+      "type": "String"
+    },
+    {
+      "name": "auditExceptions",
+      "title": "审核异常",
+      "type": "Array"
+    },
+    {
+      "name": "auditTime",
+      "title": "审核时间",
+      "type": "DateTime",
+      "format": "timestamp-ms"
+    }
+  ]
+}
