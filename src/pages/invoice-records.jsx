@@ -3,8 +3,9 @@ import React, { useState, useEffect } from 'react';
 // @ts-ignore;
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Badge, useToast, Input } from '@/components/ui';
 // @ts-ignore;
-import { FileText, Calendar, DollarSign, Building, Download, RefreshCw, Search, Filter } from 'lucide-react';
+import { FileText, Calendar, DollarSign, Building, Download, RefreshCw, Search, Filter, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 
+import { invoiceAuditFlow, getAuditStatusColor } from '@/lib/audit-utils';
 export default function InvoiceRecords(props) {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,13 +15,11 @@ export default function InvoiceRecords(props) {
     toast
   } = useToast();
 
-  // ✅ 修复：调用云函数而不是不存在的数据源
+  // ✅ 调用云函数加载发票记录
   const loadInvoices = async () => {
     setLoading(true);
     try {
       console.log('开始加载发票记录...');
-
-      // 调用云函数的 list action
       const result = await window.$w.cloud.callFunction({
         name: 'textin-bill-recognition',
         data: {
@@ -38,19 +37,51 @@ export default function InvoiceRecords(props) {
       if (apiResponse.success && apiResponse.items && Array.isArray(apiResponse.items)) {
         const realInvoices = apiResponse.items;
         console.log('发票数量:', realInvoices.length);
-        console.log('发票数据:', realInvoices);
+
+        // ✅ 对每张发票执行审核
+        const invoicesWithAudit = realInvoices.map(invoice => {
+          const auditData = [{
+            invoiceNumber: invoice.invoiceNumber || '',
+            invoiceDate: invoice.invoiceDate || '',
+            carPlate: invoice.carPlate || '',
+            hasSeal1: invoice.supervisoryStamp === 'True' || invoice.supervisoryStamp === true,
+            hasSeal2: invoice.invoiceStamp === 'True' || invoice.invoiceStamp === true
+          }];
+          try {
+            const auditResult = invoiceAuditFlow(auditData);
+            return {
+              ...invoice,
+              auditStatus: auditResult.status,
+              auditExceptions: auditResult.exceptions,
+              auditSummary: auditResult.summary
+            };
+          } catch (error) {
+            console.error('审核失败:', error);
+            return {
+              ...invoice,
+              auditStatus: 'error',
+              auditExceptions: [{
+                type: '异常',
+                reason: '审核异常'
+              }],
+              auditSummary: '审核过程出错'
+            };
+          }
+        });
 
         // 根据筛选状态过滤数据
-        let filteredInvoices = realInvoices;
-        if (filterStatus === 'audit_failed') {
-          filteredInvoices = realInvoices.filter(invoice => invoice.auditStatus === 'failed');
-        } else if (filterStatus !== 'all') {
-          filteredInvoices = realInvoices.filter(invoice => invoice.recognitionStatus === filterStatus);
+        let filteredInvoices = invoicesWithAudit;
+        if (filterStatus === 'passed') {
+          filteredInvoices = invoicesWithAudit.filter(invoice => invoice.auditStatus === '审核通过');
+        } else if (filterStatus === 'warning') {
+          filteredInvoices = invoicesWithAudit.filter(invoice => invoice.auditStatus === '需人工复核');
+        } else if (filterStatus === 'failed') {
+          filteredInvoices = invoicesWithAudit.filter(invoice => invoice.auditStatus === '审核不通过');
         }
         setInvoices(filteredInvoices);
         toast({
           title: "数据加载成功",
-          description: `共加载 ${filteredInvoices.length} 条发票记录${filterStatus === 'audit_failed' ? '（审核不通过）' : ''}`
+          description: `共加载 ${filteredInvoices.length} 条发票记录`
         });
       } else {
         console.warn('云函数返回为空或无 items 字段');
@@ -78,8 +109,8 @@ export default function InvoiceRecords(props) {
 
   // 过滤和搜索功能
   const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = searchTerm === '' || invoice.fileName?.toLowerCase().includes(searchTerm.toLowerCase()) || invoice.sellerName?.toLowerCase().includes(searchTerm.toLowerCase()) || invoice.invoiceCode?.includes(searchTerm) || invoice.invoiceNumber?.includes(searchTerm);
-    const matchesFilter = filterStatus === 'all' || (filterStatus === 'audit_failed' ? invoice.auditStatus === 'failed' : invoice.recognitionStatus === filterStatus);
+    const matchesSearch = searchTerm === '' || invoice.fileName?.toLowerCase().includes(searchTerm.toLowerCase()) || invoice.invoiceNumber?.includes(searchTerm) || invoice.carPlate?.includes(searchTerm);
+    const matchesFilter = filterStatus === 'all' || filterStatus === 'passed' && invoice.auditStatus === '审核通过' || filterStatus === 'warning' && invoice.auditStatus === '需人工复核' || filterStatus === 'failed' && invoice.auditStatus === '审核不通过';
     return matchesSearch && matchesFilter;
   });
 
@@ -94,8 +125,8 @@ export default function InvoiceRecords(props) {
       return;
     }
     try {
-      const headers = ['序号', '文件名', '发票类型', '发票代码', '发票号码', '开票日期', '金额', '销售方名称', '识别状态', '审核状态', '识别时间'];
-      const csvData = filteredInvoices.map((invoice, index) => [index + 1, invoice.fileName || '', invoice.invoiceType || '', invoice.invoiceCode || '', invoice.invoiceNumber || '', invoice.invoiceDate || '', invoice.amount || '', invoice.sellerName || '', invoice.recognitionStatus || '', invoice.auditStatus || '待审核', invoice.recognitionTime ? new Date(invoice.recognitionTime).toLocaleString('zh-CN') : '']);
+      const headers = ['序号', '文件名', '发票类型', '发票代码', '发票号码', '开票日期', '金额', '车牌号', '上车时间', '下车时间', '里程', '审核状态', '审核结果'];
+      const csvData = filteredInvoices.map((invoice, index) => [index + 1, invoice.fileName || '', invoice.invoiceType || '', invoice.invoiceCode || '', invoice.invoiceNumber || '', invoice.invoiceDate || '', invoice.amount || '', invoice.carPlate || '', invoice.boardingTime || '', invoice.landingTime || '', invoice.mileage || '', invoice.auditStatus || '', invoice.auditSummary || '']);
       const csvContent = [headers.join(','), ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
       const blob = new Blob(['\uFEFF' + csvContent], {
         type: 'text/csv;charset=utf-8;'
@@ -138,120 +169,169 @@ export default function InvoiceRecords(props) {
     }
     return new Date(timestamp).toLocaleString('zh-CN');
   };
+
+  // 获取审核状态图标
+  const getAuditIcon = status => {
+    switch (status) {
+      case '审核通过':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case '需人工复核':
+        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+      case '审核不通过':
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return null;
+    }
+  };
   return <div className="min-h-screen bg-gray-50 p-6">
       {/* 页面标题 */}
-      <div className="mb-6">
+      <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">发票记录管理</h1>
-        <p className="text-gray-600 mt-2">管理已识别的发票记录，支持搜索、筛选和导出功能</p>
+        <p className="text-gray-600 mt-2">管理已识别的发票记录，支持搜索、筛选、审核和导出功能</p>
       </div>
 
       {/* 搜索和筛选区域 */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>搜索与筛选</CardTitle>
-          <CardDescription>根据文件名、销售方、发票代码等信息进行搜索</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-500" />
-              <Input placeholder="搜索文件名、销售方、发票代码..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+      <div className="mb-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-500" />
+                <Input placeholder="搜索文件名、发票号、车牌号..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+              </div>
+              
+              <div>
+                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="border rounded-lg px-3 py-2 text-sm w-full">
+                  <option value="all">全部状态</option>
+                  <option value="passed">✅ 审核通过</option>
+                  <option value="warning">⚠️ 需人工复核</option>
+                  <option value="failed">❌ 审核不通过</option>
+                </select>
+              </div>
+              
+              <div>
+                <Button onClick={loadInvoices} className="w-full">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  刷新
+                </Button>
+              </div>
+              
+              <div>
+                <Button onClick={exportToExcel} className="w-full bg-green-600 hover:bg-green-700">
+                  <Download className="h-4 w-4 mr-2" />
+                  导出Excel
+                </Button>
+              </div>
             </div>
-            <div>
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="border rounded-lg px-3 py-2 text-sm w-full">
-                <option value="all">全部状态</option>
-                <option value="completed">识别成功</option>
-                <option value="failed">识别失败</option>
-                <option value="audit_failed">审核不通过</option>
-              </select>
-            </div>
-            <div>
-              <Button onClick={loadInvoices} className="w-full">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                刷新
-              </Button>
-            </div>
-            <div>
-              <Button onClick={exportToExcel} className="w-full">
-                <Download className="w-4 h-4 mr-2" />
-                导出Excel
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* 发票记录列表 */}
-      {loading ? <Card>
-          <CardContent className="p-8 text-center">
-            <RefreshCw className="w-8 h-8 mx-auto mb-4 animate-spin" />
-            <p>加载中...</p>
-          </CardContent>
-        </Card> : <div className="space-y-4">
+      {loading ? <div className="flex justify-center items-center h-64">
+          <div className="text-gray-500">加载中...</div>
+        </div> : <div className="space-y-4">
           {filteredInvoices.length === 0 ? <Card>
               <CardContent className="p-8 text-center">
-                <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                <h3 className="text-lg font-medium text-gray-900">
-                  {searchTerm || filterStatus !== 'all' ? '没有找到匹配的发票记录' : '暂无发票记录'}
-                </h3>
+                <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500">
-                  {searchTerm || filterStatus !== 'all' ? '请尝试调整搜索条件或筛选状态' : '请先上传发票图片进行识别'}
+                  {searchTerm || filterStatus !== 'all' ? '没有找到匹配的发票记录' : '暂无发票记录'}
                 </p>
               </CardContent>
-            </Card> : filteredInvoices.map(invoice => <Card key={invoice.id || invoice._id} className="hover:shadow-lg transition-shadow">
+            </Card> : filteredInvoices.map(invoice => <Card key={invoice.id || invoice.fileName} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="flex items-center gap-2">
-                      <FileText className="w-5 h-5" />
-                      {invoice.fileName}
-                    </CardTitle>
-                    <Badge variant={invoice.recognitionStatus === 'completed' ? 'default' : 'destructive'}>
-                      {invoice.recognitionStatus === 'completed' ? '✅ 成功' : '❌ 失败'}
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg">{invoice.fileName}</CardTitle>
+                      <CardDescription className="mt-1">
+                        <Badge variant="secondary" className="mr-2">
+                          {invoice.invoiceType || '未识别'}
+                        </Badge>
+                      </CardDescription>
+                      <CardDescription className="mt-1">
+                        发票号: {invoice.invoiceNumber || '未识别'} | 日期: {invoice.invoiceDate || '未识别'}
+                      </CardDescription>
+                    </div>
+                    
+                    {/* 审核状态徽章 */}
+                    <Badge variant={getAuditStatusColor(invoice.auditStatus)} className="flex items-center gap-1">
+                      {getAuditIcon(invoice.auditStatus)}
+                      <span>
+                        {invoice.auditStatus || '未审核'}
+                      </span>
                     </Badge>
                   </div>
                 </CardHeader>
                 
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <CardContent className="space-y-4">
+                  {/* 发票基本信息 */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
-                      <p className="text-sm text-gray-500">类型</p>
-                      <p className="font-medium">{invoice.invoiceType || '未识别'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">日期</p>
-                      <p className="font-medium">{invoice.invoiceDate || '未识别'}</p>
+                      <p className="text-sm text-gray-500">发票代码</p>
+                      <p className="font-medium">{invoice.invoiceCode || '未识别'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">金额</p>
-                      <p className="font-medium">¥{invoice.amount || '未识别'}</p>
+                      <p className="font-medium">¥{invoice.amount || '0'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">销售方</p>
-                      <p className="font-medium">{invoice.seller || invoice.sellerName || '未知'}</p>
+                      <p className="text-sm text-gray-500">车牌号</p>
+                      <p className="font-medium">{invoice.carPlate || '未识别'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">地点</p>
+                      <p className="font-medium">{invoice.invoiceLocation || '未识别'}</p>
                     </div>
                   </div>
 
-                  {invoice.invoiceCode && invoice.invoiceNumber && <div className="mb-4">
-                      <p className="text-sm text-gray-500">发票代码: {invoice.invoiceCode} | 发票号码: {invoice.invoiceNumber}</p>
+                  {/* 出租车特有信息 */}
+                  {invoice.boardingTime && <div>
+                      <p className="text-sm text-gray-500 mb-2">出行信息</p>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-xs text-gray-500">上车: {invoice.boardingTime}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">下车: {invoice.landingTime}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">里程: {invoice.mileage}</p>
+                        </div>
+                      </div>
                     </div>}
 
+                  {/* 印章信息 */}
+                  <div className="flex gap-4">
+                    <div>
+                      <p className="text-sm text-gray-500">
+                        {invoice.supervisoryStamp === 'True' ? '✅' : '❌'} 监制章
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">
+                        {invoice.invoiceStamp === 'True' ? '✅' : '❌'} 发票章
+                      </p>
+                    </div>
+                  </div>
+
                   {/* 审核结果 */}
-                  {invoice.auditStatus && <div className="border-t pt-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant={invoice.auditStatus === 'failed' ? 'destructive' : 'default'}>
-                          审核: {invoice.auditStatus === 'failed' ? '❌ 不通过' : '✅ 通过'}
-                        </Badge>
+                  {invoice.auditExceptions && invoice.auditExceptions.length > 0 && <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-sm font-medium mb-2">审核详情: {invoice.auditSummary}</p>
+                      <div className="space-y-1">
+                        {invoice.auditExceptions.map((exception, idx) => <p key={idx} className="text-xs text-gray-600">
+                            {exception.type === '异常' ? '❌' : '⚠️'}
+                            {exception.reason}
+                          </p>)}
                       </div>
-                      {invoice.auditStatus === 'failed' && invoice.auditExceptions && <p className="text-sm text-red-600">异常原因: {invoice.auditExceptions}</p>}
-                      {invoice.carPlate && <p className="text-sm text-gray-600">车牌号: {invoice.carPlate}</p>}
                     </div>}
-                  
-                  <div className="flex justify-between items-center text-sm text-gray-500 mt-4 pt-4 border-t">
+                </CardContent>
+                
+                <div className="px-6 py-3 bg-gray-50 border-t">
+                  <div className="flex justify-between text-xs text-gray-500">
                     <span>文件大小: {formatFileSize(invoice.fileSize || 0)}</span>
                     <span>识别时间: {formatTime(invoice.recognitionTime)}</span>
-                    {invoice.auditTime && <span>审核时间: {formatTime(invoice.auditTime)}</span>}
                   </div>
-                </CardContent>
+                </div>
               </Card>)}
         </div>}
 
