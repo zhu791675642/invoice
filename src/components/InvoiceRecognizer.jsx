@@ -4,13 +4,14 @@ import React, { useState } from 'react';
 import { useToast } from '@/components/ui';
 
 /**
- * 发票识别Hook - 修复版
+ * 发票识别Hook - 最终修复版
  * 兼容腾讯云文档型数据库 + TextIn API v2
  */
 export function useInvoiceRecognizer() {
   const [recognitionResult, setRecognitionResult] = useState(null);
   const [currentFile, setCurrentFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [historyList, setHistoryList] = useState([]);
   const {
     toast
   } = useToast();
@@ -43,80 +44,23 @@ export function useInvoiceRecognizer() {
   };
 
   /**
-   * 从 TextIn 返回的 item_list 中提取指定字段值
+   * 调用云函数
    */
-  const extractFieldValue = (itemList, key) => {
-    if (!itemList || !Array.isArray(itemList)) return '';
-    const item = itemList.find(i => i.key === key);
-    return item?.value || '';
-  };
-
-  /**
-   * 提取发票关键信息 - 完整版
-   * 包含所有需要导出的字段
-   */
-  const extractInvoiceInfo = recognitionData => {
-    const invoiceData = recognitionData.invoiceData;
-    const itemList = invoiceData?.item_list || [];
-
-    // 提取所有关键字段
-    const invoiceInfo = {
-      // 基础信息
-      invoiceType: recognitionData.invoiceType || '未知类型',
-      invoiceCode: extractFieldValue(itemList, 'invoice_code'),
-      invoiceNumber: extractFieldValue(itemList, 'invoice_number'),
-      invoiceDate: extractFieldValue(itemList, 'invoice_date'),
-      // 金额信息
-      amount: extractFieldValue(itemList, 'total_amount'),
-      taxAmount: extractFieldValue(itemList, 'tax_amount'),
-      // 车辆信息
-      carPlate: extractFieldValue(itemList, 'car_plate'),
-      // 地址信息
-      invoiceLocation: extractFieldValue(itemList, 'invoice_location'),
-      // 印章信息
-      supervisoryStamp: extractFieldValue(itemList, 'supervisory_stamp'),
-      invoiceStamp: extractFieldValue(itemList, 'invoice_stamp'),
-      // 人员信息
-      sellerName: extractFieldValue(itemList, 'seller_name'),
-      buyerName: extractFieldValue(itemList, 'buyer_name'),
-      // 其他信息
-      fileName: recognitionData.fileName,
-      fileSize: recognitionData.fileSize,
-      fileType: recognitionData.fileType,
-      recognitionTime: recognitionData.recognitionTime,
-      recognitionStatus: 'success',
-      auditStatus: 'pending',
-      auditExceptions: '',
-      auditTime: '',
-      // 完整的 API 响应（用于备份）
-      apiResponse: JSON.stringify(recognitionData)
-    };
-    return invoiceInfo;
-  };
-
-  /**
-   * 保存到腾讯云文档型数据库
-   */
-  const saveToTencentDB = async invoiceInfo => {
-    try {
-      console.log('开始保存发票数据到腾讯云文档型数据库...');
-      console.log('待保存数据:', invoiceInfo);
-
-      // 调用云函数保存数据
-      const saveResult = await window.$w.cloud.callFunction({
-        name: 'textin-bill-recognition',
-        data: {
-          action: 'save',
-          record: invoiceInfo
-        }
-      });
-      console.log('✅ 发票数据保存成功:', saveResult);
-      return saveResult;
-    } catch (error) {
-      console.error('❌ 保存发票数据失败:', error);
-      throw error;
+  const callCloudFunction = async data => {
+    const result = await window.$w.cloud.callFunction({
+      name: 'textin-bill-recognition',
+      data
+    });
+    // 腾讯云包装格式
+    if (result.result && typeof result.result === 'object') {
+      return result.result;
     }
+    return result;
   };
+
+  /**
+   * 识别发票
+   */
   const recognizeInvoice = async (file, options = {}) => {
     setIsProcessing(true);
     setCurrentFile(file);
@@ -126,104 +70,65 @@ export function useInvoiceRecognizer() {
       if (!validation.valid) {
         throw new Error(validation.message);
       }
-      console.log('========================================');
       console.log('开始处理文件:', file.name);
-      console.log('文件验证通过:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
       const fileBase64 = await fileToBase64(file);
       if (!fileBase64) {
         throw new Error('文件转换失败');
       }
-      console.log('base64 转换成功');
-      console.log('调用云函数: textin-bill-recognition');
-      const cloudResult = await window.$w.cloud.callFunction({
-        name: 'textin-bill-recognition',
-        data: {
-          action: 'recognize',
-          fileBase64: fileBase64,
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type,
-          options: options
-        }
+
+      // ✅ 调用云函数 recognize，云函数会自动保存到数据库
+      const apiResponse = await callCloudFunction({
+        action: 'recognize',
+        fileBase64: fileBase64,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        options: options
       });
-      console.log('========================================');
-      console.log('云函数返回结果:', cloudResult);
-      console.log('cloudResult 类型:', typeof cloudResult);
-      console.log('cloudResult 的键:', Object.keys(cloudResult || {}));
-      console.log('========================================');
+      console.log('云函数返回:', apiResponse);
 
-      // 腾讯云会包装返回值，所以需要检查 result 字段
-      let apiResponse = cloudResult;
-
-      // 如果被腾讯云包装了，取出 result
-      if (cloudResult.result && typeof cloudResult.result === 'object') {
-        console.log('检测到腾讯云包装格式，提取 result');
-        apiResponse = cloudResult.result;
-      }
-      console.log('提取后的 apiResponse:', apiResponse);
-      console.log('apiResponse 的键:', Object.keys(apiResponse || {}));
-
-      // ✅ 修复：检查 code === 0（成功）而不是 code === 200
+      // 检查返回
       if (!apiResponse || apiResponse.code !== 0) {
-        const errorMsg = apiResponse?.message || '识别失败';
-        throw new Error(`识别失败 (${apiResponse?.code}): ${errorMsg}`);
+        throw new Error(`识别失败 (${apiResponse?.code}): ${apiResponse?.message || '未知错误'}`);
       }
+      const data = apiResponse.data || {};
+      console.log('识别数据:', data);
 
-      // 检查 data 字段
-      if (!apiResponse.data) {
-        console.error('❌ data 为空');
-        console.error('apiResponse:', JSON.stringify(apiResponse, null, 2));
-        throw new Error('识别结果为空，请检查图片质量');
-      }
-      console.log('✅ data 存在');
-
-      // 提取识别结果
-      const invoiceData = apiResponse.data;
-      console.log('发票数据:', invoiceData);
-
-      // 保存结果
+      // ✅ 直接使用云函数返回的数据，不需要前端再提取
       const finalData = {
+        id: data.id,
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type,
         recognitionTime: new Date().toISOString(),
-        invoiceType: invoiceData?.type_description || '未知类型',
-        invoiceData: invoiceData,
+        invoiceType: data.invoiceType || '未知类型',
+        invoiceCode: data.invoiceCode || '',
+        invoiceNumber: data.invoiceNumber || '',
+        invoiceDate: data.invoiceDate || '',
+        amount: data.amount || 0,
+        carPlate: data.carPlate || '',
+        invoiceLocation: data.invoiceLocation || '',
+        supervisoryStamp: data.supervisoryStamp || '',
+        invoiceStamp: data.invoiceStamp || '',
+        taxiNo: data.taxiNo || '',
+        boardingTime: data.boardingTime || '',
+        landingTime: data.landingTime || '',
+        mileage: data.mileage || '',
+        price: data.price || 0,
         success: true
       };
       setRecognitionResult(finalData);
+      console.log('✅ 识别完成', finalData);
+      toast({
+        title: '识别成功',
+        description: `发票类型：${finalData.invoiceType}`
+      });
 
-      // ✅ 提取关键信息并保存到数据库
-      try {
-        const invoiceInfo = extractInvoiceInfo(finalData);
-        await saveToTencentDB(invoiceInfo);
-        toast({
-          title: '识别成功',
-          description: `文件 ${file.name} 已成功识别并保存到云端，发票类型：${finalData.invoiceType}`
-        });
-      } catch (saveError) {
-        console.error('❌ 保存发票数据失败:', saveError);
-        toast({
-          title: '识别成功但保存失败',
-          description: `文件 ${file.name} 识别成功，但保存到云端时出错：${saveError.message}`,
-          variant: 'destructive'
-        });
-      }
-      console.log('========================================');
-      console.log('✅ 识别完成');
-      console.log('发票类型:', finalData.invoiceType);
-      console.log('发票号码:', invoiceData?.item_list?.find(item => item.key === 'invoice_number')?.value);
-      console.log('========================================');
+      // 刷新历史记录
+      loadHistory();
       return finalData;
     } catch (error) {
-      console.error('========================================');
-      console.error('❌ 发票识别错误');
-      console.error('错误信息:', error.message);
-      console.error('========================================');
+      console.error('❌ 发票识别错误:', error.message);
       toast({
         title: '识别失败',
         description: error.message,
@@ -236,10 +141,56 @@ export function useInvoiceRecognizer() {
   };
 
   /**
-   * 导出识别结果到 CSV
+   * 加载历史记录
    */
-  const exportToExcel = recognitionResults => {
-    if (!recognitionResults || recognitionResults.length === 0) {
+  const loadHistory = async () => {
+    try {
+      console.log('开始加载发票记录...');
+      const result = await callCloudFunction({
+        action: 'list',
+        limit: 20
+      });
+      if (result.success && result.items) {
+        setHistoryList(result.items);
+        console.log('✅ 加载成功，记录数:', result.items.length);
+      } else {
+        console.log('暂无历史记录');
+        setHistoryList([]);
+      }
+    } catch (error) {
+      console.error('加载发票记录失败:', error);
+      setHistoryList([]);
+    }
+  };
+
+  /**
+   * 删除记录
+   */
+  const deleteRecord = async id => {
+    try {
+      await callCloudFunction({
+        action: 'delete',
+        id
+      });
+      toast({
+        title: '删除成功'
+      });
+      loadHistory();
+    } catch (error) {
+      toast({
+        title: '删除失败',
+        description: error.message,
+        variant: 'destructive'
+      });
+    }
+  };
+
+  /**
+   * 导出历史记录到 CSV
+   */
+  const exportToExcel = records => {
+    const list = records || historyList;
+    if (!list || list.length === 0) {
       toast({
         title: '无数据可导出',
         variant: 'destructive'
@@ -247,7 +198,6 @@ export function useInvoiceRecognizer() {
       return;
     }
     try {
-      // 定义导出的字段
       const exportFields = [{
         key: 'fileName',
         label: '文件名'
@@ -279,14 +229,17 @@ export function useInvoiceRecognizer() {
         key: 'amount',
         label: '总计金额'
       }, {
-        key: 'taxAmount',
-        label: '税额'
+        key: 'taxiNo',
+        label: '车号'
       }, {
-        key: 'sellerName',
-        label: '销售方'
+        key: 'boardingTime',
+        label: '上车时间'
       }, {
-        key: 'buyerName',
-        label: '购买方'
+        key: 'landingTime',
+        label: '下车时间'
+      }, {
+        key: 'mileage',
+        label: '里程'
       }, {
         key: 'recognitionTime',
         label: '识别时间'
@@ -295,15 +248,17 @@ export function useInvoiceRecognizer() {
         label: '审核状态'
       }];
       const headers = exportFields.map(f => f.label);
-      const rows = recognitionResults.map(result => {
-        const invoiceInfo = extractInvoiceInfo(result);
+      const rows = list.map(record => {
         return exportFields.map(field => {
-          const value = invoiceInfo[field.key] || '';
+          let value = record[field.key] || '';
+          if (typeof value === 'number') {
+            value = value.toString();
+          }
           return `"${value.toString().replace(/"/g, '""')}"`;
         });
       });
       const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-      const blob = new Blob([csvContent], {
+      const blob = new Blob(['\ufeff' + csvContent], {
         type: 'text/csv;charset=utf-8;'
       });
       const link = document.createElement('a');
@@ -312,7 +267,7 @@ export function useInvoiceRecognizer() {
       link.click();
       toast({
         title: '导出成功',
-        description: `已导出 ${recognitionResults.length} 条记录`
+        description: `已导出 ${list.length} 条记录`
       });
     } catch (error) {
       console.error('导出错误:', error);
@@ -325,9 +280,11 @@ export function useInvoiceRecognizer() {
   };
   return {
     recognizeInvoice,
+    loadHistory,
+    deleteRecord,
     exportToExcel,
     isProcessing,
     recognitionResult,
-    extractInvoiceInfo
+    historyList
   };
 }
