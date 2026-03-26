@@ -12,10 +12,16 @@
     "buyerName": "",
     "taxAmount": "",
     "totalAmount": "",
-    "recognitionStatus": "成功",
-    "isMockData": true,
+    "recognitionStatus": "completed",
+    "isMockData": false,
     "recognitionTime": 1742400000000,
     "originalImageUrl": "",
+    "auditStatus": "passed",
+    "auditExceptions": [],
+    "auditTime": 1742403600000,
+    "carPlate": "",
+    "hasSeal1": true,
+    "hasSeal2": false,
     "apiResponse": {
       "code": 200,
       "message": "success",
@@ -65,7 +71,7 @@
       ]
     },
     "createdAt": 1742400000000,
-    "updatedAt": 1742400000000,
+    "updatedAt": 1742403600000,
     "owner": "user_001",
     "createBy": "user_001",
     "updateBy": "user_001"
@@ -83,10 +89,16 @@
     "buyerName": "某某企业集团",
     "taxAmount": "195.00",
     "totalAmount": "1695.00",
-    "recognitionStatus": "成功",
+    "recognitionStatus": "completed",
     "isMockData": false,
     "recognitionTime": 1742486400000,
     "originalImageUrl": "",
+    "auditStatus": "failed",
+    "auditExceptions": ["发票代码格式不正确", "销售方名称与备案不符"],
+    "auditTime": 1742490000000,
+    "carPlate": "京A12345",
+    "hasSeal1": true,
+    "hasSeal2": true,
     "apiResponse": {
       "code": 200,
       "message": "success",
@@ -145,13 +157,13 @@
             "width": 800,
             "height": 600
           },
-          "duration": 145,
+          "duration": 189,
           "page_number": 0
         }
       ]
     },
     "createdAt": 1742486400000,
-    "updatedAt": 1742486400000,
+    "updatedAt": 1742490000000,
     "owner": "user_001",
     "createBy": "user_001",
     "updateBy": "user_001"
@@ -164,15 +176,56 @@
     "invoiceCode": "345678901234",
     "invoiceNumber": "765432109876",
     "invoiceDate": "2025-03-19",
-    "amount": "89.90",
-    "sellerName": "某某便利店",
+    "amount": "89.00",
+    "sellerName": "某某餐饮有限公司",
     "buyerName": "",
     "taxAmount": "",
     "totalAmount": "",
-    "recognitionStatus": "成功",
+    "recognitionStatus": "failed",
     "isMockData": false,
     "recognitionTime": 1742572800000,
     "originalImageUrl": "",
+    "auditStatus": "pending",
+    "auditExceptions": [],
+    "auditTime": null,
+    "carPlate": "",
+    "hasSeal1": false,
+    "hasSeal2": false,
+    "apiResponse": {
+      "code": 400,
+      "message": "识别失败：图片质量不佳",
+      "pageNum": 1,
+      "pages": []
+    },
+    "createdAt": 1742572800000,
+    "updatedAt": 1742572800000,
+    "owner": "user_002",
+    "createBy": "user_002",
+    "updateBy": "user_002"
+  },
+  {
+    "_id": "invoice_004",
+    "fileName": "invoice_20250320_001.jpg",
+    "fileSize": 768000,
+    "invoiceType": "增值税发票",
+    "invoiceCode": "456789012345",
+    "invoiceNumber": "654321098765",
+    "invoiceDate": "2025-03-20",
+    "amount": "3200.00",
+    "sellerName": "某某信息技术有限公司",
+    "buyerName": "",
+    "taxAmount": "",
+    "totalAmount": "",
+    "recognitionStatus": "completed",
+    "isMockData": false,
+    "recognitionTime": 1742659200000,
+    "originalImageUrl": "",
+    "auditStatus": "passed",
+    "auditExceptions": [],
+    "auditTime": 1742662800000,
+    "carPlate": "沪B67890",
+    "hasSeal1": true,
+    "hasSeal2": false,
     "apiResponse": {
       "code": 200,
       "message": "success",
@@ -182,32 +235,32 @@
           "result": {
             "object_list": [
               {
-                "type": "general_invoice",
-                "type_description": "普通发票",
+                "type": "vat_invoice",
+                "type_description": "增值税发票",
                 "item_list": [
                   {
                     "key": "invoice_code",
-                    "value": "345678901234",
+                    "value": "456789012345",
                     "description": "发票代码"
                   },
                   {
                     "key": "invoice_no",
-                    "value": "765432109876",
+                    "value": "654321098765",
                     "description": "发票号码"
                   },
                   {
                     "key": "date",
-                    "value": "2025-03-19",
+                    "value": "2025-03-20",
                     "description": "开票日期"
                   },
                   {
                     "key": "amount",
-                    "value": "89.90",
+                    "value": "3200.00",
                     "description": "金额"
                   },
                   {
                     "key": "seller_name",
-                    "value": "某某便利店",
+                    "value": "某某信息技术有限公司",
                     "description": "销售方名称"
                   }
                 ]
@@ -216,15 +269,107 @@
             "width": 800,
             "height": 600
           },
-          "duration": 132,
+          "duration": 145,
           "page_number": 0
         }
       ]
     },
-    "createdAt": 1742572800000,
-    "updatedAt": 1742572800000,
-    "owner": "user_002",
-    "createBy": "user_002",
-    "updateBy": "user_002"
+    "createdAt": 1742659200000,
+    "updatedAt": 1742662800000,
+    "owner": "user_003",
+    "createBy": "user_003",
+    "updateBy": "user_003"
+  },
+  {
+    "_id": "invoice_005",
+    "fileName": "invoice_20250321_001.jpg",
+    "fileSize": 1280000,
+    "invoiceType": "增值税专用发票",
+    "invoiceCode": "567890123456",
+    "invoiceNumber": "543210987654",
+    "invoiceDate": "2025-03-21",
+    "amount": "2800.00",
+    "sellerName": "某某制造有限公司",
+    "buyerName": "某某贸易公司",
+    "taxAmount": "364.00",
+    "totalAmount": "3164.00",
+    "recognitionStatus": "completed",
+    "isMockData": false,
+    "recognitionTime": 1742745600000,
+    "originalImageUrl": "",
+    "auditStatus": "failed",
+    "auditExceptions": ["购买方纳税人识别号缺失", "发票金额与合同不符"],
+    "auditTime": 1742749200000,
+    "carPlate": "粤C54321",
+    "hasSeal1": true,
+    "hasSeal2": true,
+    "apiResponse": {
+      "code": 200,
+      "message": "success",
+      "pageNum": 1,
+      "pages": [
+        {
+          "result": {
+            "object_list": [
+              {
+                "type": "vat_invoice",
+                "type_description": "增值税专用发票",
+                "item_list": [
+                  {
+                    "key": "invoice_code",
+                    "value": "567890123456",
+                    "description": "发票代码"
+                  },
+                  {
+                    "key": "invoice_no",
+                    "value": "543210987654",
+                    "description": "发票号码"
+                  },
+                  {
+                    "key": "date",
+                    "value": "2025-03-21",
+                    "description": "开票日期"
+                  },
+                  {
+                    "key": "amount",
+                    "value": "2800.00",
+                    "description": "金额"
+                  },
+                  {
+                    "key": "seller_name",
+                    "value": "某某制造有限公司",
+                    "description": "销售方名称"
+                  },
+                  {
+                    "key": "buyer_name",
+                    "value": "某某贸易公司",
+                    "description": "购买方名称"
+                  },
+                  {
+                    "key": "tax_amount",
+                    "value": "364.00",
+                    "description": "税额"
+                  },
+                  {
+                    "key": "total_amount",
+                    "value": "3164.00",
+                    "description": "总金额"
+                  }
+                ]
+              }
+            ],
+            "width": 800,
+            "height": 600
+          },
+          "duration": 178,
+          "page_number": 0
+        }
+      ]
+    },
+    "createdAt": 1742745600000,
+    "updatedAt": 1742749200000,
+    "owner": "user_001",
+    "createBy": "user_001",
+    "updateBy": "user_001"
   }
 ]
