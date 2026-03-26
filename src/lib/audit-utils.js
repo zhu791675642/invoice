@@ -1,7 +1,7 @@
 // 发票审核工具函数
 
 /**
- * 统一车牌格式：ACQ3466 → A.CQ3466
+ * 统一车牌格式：ATA713 → A.TA713（总共6位：1位+点+5位）
  */
 function normalizeCarPlate(plate) {
   if (!plate) return '';
@@ -9,14 +9,26 @@ function normalizeCarPlate(plate) {
   // 去掉多余的空格
   plate = plate.trim();
   
-  // 如果已经是 A.ED3806 或 A.AU5917 格式，直接返回
+  // 如果已经是 A.TA713 格式（6位：1个大写字母 + 点 + 5位大写字母/数字），直接返回
   if (/^[A-Z]\.[A-Z0-9]{5}$/.test(plate)) {
     return plate;
   }
   
-  // 如果是 ACQ3466 格式（7位：1个大写字母 + 2个大写字母 + 4个数字/字母），转换为 A.CQ3466
-  if (/^[A-Z]{2}[0-9A-Z]{4}$/.test(plate)) {
+  // 如果是 ATA713 格式（6位：1个大写字母 + 5位大写字母/数字），转换为 A.TA713
+  if (/^[A-Z][A-Z0-9]{5}$/.test(plate)) {
     return plate.charAt(0) + '.' + plate.substring(1);
+  }
+  
+  // 如果是 A.AU7761 格式（7位，多了一位），需要截断
+  if (/^[A-Z]\.[A-Z0-9]{6}$/.test(plate)) {
+    // 取前 6 位：A + . + 前 5 位
+    return plate.substring(0, 7); // A.AU776 → 去掉最后一位
+  }
+  
+  // 如果是 ATA7761 格式（7位，多了一位），需要截断
+  if (/^[A-Z][A-Z0-9]{6}$/.test(plate)) {
+    // 取前 6 位：A + TA713
+    return plate.charAt(0) + '.' + plate.substring(1, 6);
   }
   
   // 如果是 A.CQ3466 格式但多了点，去掉多余的点
